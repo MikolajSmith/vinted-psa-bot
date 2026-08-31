@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.mikolaj.vintedpsabot</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/Users/mikolaj.staszkiewicz/Desktop/pokemon tcg/vinted-psa-bot/venv/bin/python3</string>
+        <string>/Users/mikolaj.staszkiewicz/Desktop/pokemon tcg/vinted-psa-bot/bot.py</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/mikolaj.staszkiewicz/Desktop/pokemon tcg/vinted-psa-bot</string>
+
+    <!-- co 15 min = 900 sekund -->
+    <key>StartInterval</key>
+    <integer>900</integer>
+
+    <!-- uruchom tez od razu po zaladowaniu, zamiast czekac 15 min na pierwszy przebieg -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>/Users/mikolaj.staszkiewicz/Desktop/pokemon tcg/vinted-psa-bot/launchd.out.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/Users/mikolaj.staszkiewicz/Desktop/pokemon tcg/vinted-psa-bot/launchd.err.log</string>
+</dict>
+</plist>

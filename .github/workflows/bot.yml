@@ -1,0 +1,43 @@
+name: vinted-psa-bot
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vinted-psa-bot-run
+  cancel-in-progress: false
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install -r requirements.txt
+
+      - run: python bot.py
+        env:
+          POKEMONPRICETRACKER_API_KEY: ${{ secrets.POKEMONPRICETRACKER_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          MIN_DISCOUNT_PERCENT: "-2"
+          MAX_DISCOUNT_PERCENT: "40"
+          MIN_SALES_SAMPLE: "3"
+          MAX_LISTINGS_PER_RUN: "50"
+          MAX_DESCRIPTION_FETCHES_PER_RUN: "50"
+
+      - name: Zapisz stan i log z powrotem do repo
+        run: |
+          git config user.name "vinted-psa-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add state.json activity_log.csv
+          git diff --cached --quiet || git commit -m "Aktualizacja stanu bota [skip ci]"
+          git push
