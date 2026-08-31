@@ -87,7 +87,42 @@ pokemonpricetracker po weryfikacji), `sample_count`, `discount_percent`, `match_
 `za_mala_probka_sprzedazy`, `limit_api_wyczerpany_retry_pozniej`,
 `brak_gradingu_w_tytule_ani_opisie`).
 
-## Uruchamianie co 15 min (macOS launchd)
+## Uruchamianie 24/7 (GitHub Actions) — aktualny sposób produkcyjny
+
+Repo: https://github.com/MikolajSmith/vinted-psa-bot (publiczne — kod jest jawny, ale sekrety
+nie). Workflow `.github/workflows/bot.yml` odpala bota co 15 min (`cron: */15 * * * *`) na
+maszynie GitHuba, niezależnie od tego czy Twój Mac jest włączony. Po każdym przebiegu bot
+commituje zaktualizowany `state.json` i `activity_log.csv` z powrotem do repo (dlatego te pliki
+NIE są w `.gitignore` — to jedyny sposób na trwały stan między przebiegami na efemerycznych
+maszynach Actions).
+
+Setup (już zrobiony, dla przypomnienia jak odtworzyć od zera):
+
+```bash
+gh auth login
+gh auth refresh -h github.com -s workflow   # push pliku w .github/workflows wymaga tego scope
+gh repo create vinted-psa-bot --public --source=. --remote=origin --push
+gh secret set POKEMONPRICETRACKER_API_KEY --repo <user>/vinted-psa-bot
+gh secret set DISCORD_WEBHOOK_URL --repo <user>/vinted-psa-bot
+gh api -X PUT repos/<user>/vinted-psa-bot/actions/permissions/workflow -f default_workflow_permissions=write
+```
+
+Żeby zmienić kod/config: edytuj pliki lokalnie, `git add -A && git commit -m "..." && git push`
+— następny zaplanowany przebieg (albo ręczne `gh workflow run bot.yml`) użyje nowej wersji.
+
+Podgląd przebiegów: `gh run list --repo <user>/vinted-psa-bot` albo zakładka **Actions** na
+GitHubie. Żeby zatrzymać: **Settings → Actions → Disable Actions** w repo, albo usuń plik
+workflow.
+
+**Limity darmowe**: repo jest publiczne, więc minuty GitHub Actions są nielimitowane. Gdyby
+kiedyś repo zrobić prywatnym, darmowy limit to 2000 min/mies. — przy co 15 min to się może nie
+zmieścić, trzeba by rzadziej odpytywać.
+
+### Alternatywa: macOS launchd (lokalnie, tylko gdy Mac jest włączony)
+
+Ten sposób jest **wyłączony** (odinstalowany z `launchctl`), bo kolidowałby ze stanem
+zarządzanym teraz przez GitHub Actions (dwa niezależne `state.json` = podwójne powiadomienia).
+Zostaw jako opcję awaryjną/do testów lokalnych — nie uruchamiaj równolegle z GitHub Actions.
 
 Plik `com.mikolaj.vintedpsabot.plist` jest już skonfigurowany pod ścieżkę tego projektu.
 
