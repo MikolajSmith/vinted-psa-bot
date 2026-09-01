@@ -118,6 +118,33 @@ workflow.
 kiedyś repo zrobić prywatnym, darmowy limit to 2000 min/mies. — przy co 15 min to się może nie
 zmieścić, trzeba by rzadziej odpytywać.
 
+### Zewnętrzny "budzik" (cron-job.org) — omija throttling harmonogramu GitHuba
+
+**Ważne odkrycie**: natywny `schedule: cron` w GitHub Actions to "best effort" — dla mało
+aktywnych repo GitHub potrafi mocno opóźniać wyzwalanie (w praktyce zaobserwowane 3-5.5h zamiast
+15 min). Rozwiązanie: darmowy serwis [cron-job.org](https://cron-job.org) co 15 min wywołuje
+bezpośrednio GitHub REST API (`workflow_dispatch`), co omija throttling natywnego schedulera.
+
+Setup (już zrobiony):
+
+1. GitHub → fine-grained personal access token, scope tylko do repo `vinted-psa-bot`,
+   uprawnienie **Actions: Read and write**, bez wygaśnięcia (Settings → Developer settings →
+   Personal access tokens → Fine-grained tokens).
+2. Konto na cron-job.org (mikolajsmith19@gmail.com), cronjob "vinted-psa-bot trigger":
+   - URL: `https://api.github.com/repos/MikolajSmith/vinted-psa-bot/actions/workflows/bot.yml/dispatches`
+   - Metoda: `POST`, co 15 minut
+   - Nagłówki: `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`,
+     `Authorization: Bearer <token z kroku 1>`, `Content-Type: application/json`
+   - Body: `{"ref":"main"}`
+   - Powiadomienie mailem włączone przy niepowodzeniu wykonania.
+
+Natywny `schedule` w `bot.yml` zostaje jako zapasowy mechanizm (redundancja, nie szkodzi).
+Podgląd/edycja: [console.cron-job.org](https://console.cron-job.org) → Cronjobs.
+
+Jeśli token kiedyś wygaśnie/zostanie odwołany, cron-job.org zacznie dostawać błędy 401 —
+wtedy trzeba wygenerować nowy fine-grained token i podmienić go w nagłówku `Authorization`
+na cron-job.org (Cronjobs → edytuj → Advanced → Headers).
+
 ### Alternatywa: macOS launchd (lokalnie, tylko gdy Mac jest włączony)
 
 Ten sposób jest **wyłączony** (odinstalowany z `launchctl`), bo kolidowałby ze stanem
