@@ -59,7 +59,7 @@ def _process_listing(listing, vinted, price_client, counters):
         return
 
     reference = price_client.get_reference_price(
-        parsed["search_query"], parsed["grade_key"], parsed["search_tokens"]
+        parsed["search_query"], parsed["grade_key"], parsed["search_tokens"], parsed["narrow_query"]
     )
     if price_client.quota_exhausted:
         _log_activity(listing, "limit_api_wyczerpany_retry_pozniej", parsed=parsed)
@@ -94,7 +94,7 @@ def _process_listing(listing, vinted, price_client, counters):
         )
         return
 
-    confident = reference["match_score"] >= 0.5
+    confident = reference["confident"]
     deal = {
         "listing_id": listing["id"],
         "title": listing["title"],
@@ -105,6 +105,9 @@ def _process_listing(listing, vinted, price_client, counters):
         "listing_price_usd": listing_price_usd,
         "grade_raw": f"{parsed['company']} {parsed['grade_raw']}",
         "reference_price_usd": reference_usd,
+        "pricing_method": reference["pricing_method"],
+        "matched_card_name": reference["card_name"],
+        "matched_set_name": reference["set_name"],
         "sample_count": reference["sample_count"],
         "discount_percent": discount_percent,
         "confident": confident,

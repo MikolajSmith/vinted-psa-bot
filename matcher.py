@@ -60,11 +60,29 @@ def parse_listing(title: str) -> dict | None:
         cleaned = cleaned.replace(number_match.group(0), " ")
     cleaned = re.sub(r"[^\w\s]", " ", cleaned, flags=re.UNICODE)
 
-    tokens = [
-        t for t in cleaned.lower().split()
-        if t not in NOISE_WORDS and not t.isdigit() and len(t) > 1
-    ]
-    search_query = " ".join(tokens).strip()
+    # Nie odrzucamy krotkich tokenow (V, GX, EX) - to czesto jedyne, co odroznia dwie wyceniane
+    # zupelnie inaczej karty (np. "Charizard V" vs "Charizard VMAX").
+    all_tokens = [t for t in cleaned.lower().split() if t not in NOISE_WORDS]
+
+    # UWAGA: samo dopisanie gologo numeru do zapytania tekstowego wysylanego do
+    # pokemonpricetracker.com potrafi zwrocic 0 wynikow (API nie radzi sobie z liczbami w
+    # wyszukiwaniu pelnotekstowym) - dlatego search_query (do zapytania HTTP) jest BEZ cyfr,
+    # a search_tokens (do lokalnej oceny trafnosci dopasowania) MA cyfry, wlacznie z numerem
+    # karty w formacie X/Y.
+    text_tokens = [t for t in all_tokens if not t.isdigit()]
+    search_query = " ".join(text_tokens).strip()
+
+    numeric_tokens = {t for t in all_tokens if t.isdigit()}
+    if number_match:
+        numeric_tokens.add(number_match.group(1).lstrip("0") or "0")
+        numeric_tokens.add(number_match.group(2).lstrip("0") or "0")
+    search_tokens = set(text_tokens) | numeric_tokens
+
+    # Zapytanie zapasowe: krotkie "nazwa + numer" (np. "charizard 79" albo "charizard 4 102").
+    # Dluzsze zapytania tekstowe z doklejonym numerem czesto zwracaja 0 wynikow w ich API,
+    # ale krotkie kombinacje (1-2 slowa + numer) zazwyczaj dzialaja - uzywane jako druga proba,
+    # gdy szerokie zapytanie samym tekstem nie da pewnego dopasowania.
+    narrow_query = " ".join(text_tokens[:2] + sorted(numeric_tokens)).strip() if numeric_tokens else ""
 
     return {
         "company": company,
@@ -72,5 +90,6 @@ def parse_listing(title: str) -> dict | None:
         "grade_key": grade_key(company, grade_raw),
         "card_number": card_number,
         "search_query": search_query,
-        "search_tokens": set(tokens),
+        "narrow_query": narrow_query,
+        "search_tokens": search_tokens,
     }
