@@ -3,14 +3,17 @@ import re
 GRADE_RE = re.compile(r"\b(PSA|BGS|CGC|SGC)\s*-?\s*(10|[1-9](?:[.,]5)?)\b", re.IGNORECASE)
 CARD_NUMBER_RE = re.compile(r"\b(\d{1,3})\s*/\s*(\d{1,3})\b")
 
-# Slowa sugerujace, ze "PSA N"/"BGS N" to subiektywna ocena sprzedajacego dla NIEGRADOWANEJ karty
-# (np. "condition is estimated as PSA 7"), a nie prawdziwy certyfikat.
+# Frazy sugerujace, ze "PSA N"/"BGS N" to subiektywna ocena sprzedajacego dla NIEGRADOWANEJ karty
+# (np. "condition is estimated as PSA 7", "na oko psa 8/9"), a nie prawdziwy certyfikat.
+# Dopasowanie jest na podstawie podciagu w oknie tekstu (nie pojedynczych tokenow), zeby dzialaly
+# tez frazy wielowyrazowe.
 HEDGE_WORDS = {
     "estimated", "estimate", "estimation", "guestimate", "guess", "would",
     "raw", "ungraded", "unslabbed", "uncertified", "self-graded", "selfgraded",
     "condition", "roughly", "approximately", "approx", "maybe", "possibly",
     "szacuje", "szacunkowo", "szacunek", "szacowana", "ocenie", "ocena",
     "prawdopodobnie", "mniej wiecej", "niegradowana", "niegradowany", "bez certyfikatu",
+    "na oko", "moim zdaniem", "wg mnie", "według mnie",
 }
 HEDGE_WINDOW = 40
 
@@ -36,8 +39,8 @@ def grade_key(company: str, grade_str: str) -> str:
 
 def _is_hedged(text: str, match: re.Match) -> bool:
     window = text[max(0, match.start() - HEDGE_WINDOW): match.end() + HEDGE_WINDOW].lower()
-    window_words = set(re.sub(r"[^\w\s]", " ", window, flags=re.UNICODE).split())
-    return bool(window_words & HEDGE_WORDS)
+    # Podciag, nie zbior tokenow - inaczej frazy wielowyrazowe (np. "na oko") nigdy by nie trafily.
+    return any(phrase in window for phrase in HEDGE_WORDS)
 
 
 def parse_listing(title: str) -> dict | None:
