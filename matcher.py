@@ -8,12 +8,22 @@ CARD_NUMBER_RE = re.compile(r"\b(\d{1,3})\s*/\s*(\d{1,3})\b")
 # Dopasowanie jest na podstawie podciagu w oknie tekstu (nie pojedynczych tokenow), zeby dzialaly
 # tez frazy wielowyrazowe.
 HEDGE_WORDS = {
+    # EN
     "estimated", "estimate", "estimation", "guestimate", "guess", "would",
     "raw", "ungraded", "unslabbed", "uncertified", "self-graded", "selfgraded",
-    "condition", "roughly", "approximately", "approx", "maybe", "possibly",
+    "self-assessed", "self assessed", "roughly", "approximately", "approx",
+    "maybe", "possibly", "probably", "likely", "could grade", "would grade",
+    "would probably", "looks like a", "eyeball", "eyeballing", "in my opinion",
+    "imo", "no cert", "no certificate", "not certified", "not graded",
+    "not slabbed", "no slab", "unofficial grade", "grade estimate",
+    "estimated grade", "condition is estimated", "estimated condition",
+    # PL
     "szacuje", "szacunkowo", "szacunek", "szacowana", "ocenie", "ocena",
-    "prawdopodobnie", "mniej wiecej", "niegradowana", "niegradowany", "bez certyfikatu",
-    "na oko", "moim zdaniem", "wg mnie", "według mnie",
+    "prawdopodobnie", "mniej wiecej", "niegradowana", "niegradowany",
+    "bez certyfikatu", "na oko", "moim zdaniem", "wg mnie", "według mnie",
+    "moja ocena", "orientacyjnie", "orientacyjna", "orientacyjny",
+    "szacunkowa ocena", "wyglada na", "wygląda na", "smialo na", "śmiało na",
+    "bez gradingu", "niecertyfikowana", "niecertyfikowany", "surowa karta",
 }
 HEDGE_WINDOW = 40
 
