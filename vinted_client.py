@@ -41,30 +41,48 @@ class VintedClient:
         self._warmed_up = True
 
     PER_PAGE = 96
+    # Vinted potrafi miec przejsciowe awarie (5xx) trwajace nawet ponad godzine (obserwowane
+    # w produkcji) - retry z backoffem zamiast wywalania calego przebiegu na pierwszym blednym
+    # zapytaniu.
+    FETCH_RETRIES = 3
+    RETRY_BACKOFF_SECONDS = (3, 8, 20)
 
     def _fetch_page(self, page: int, per_page: int) -> list[dict]:
         params = dict(self.query_params)
         params["per_page"] = str(per_page)
         params["page"] = str(page)
 
-        resp = self.session.get(
-            self.domain + "/api/v2/catalog/items",
-            params=params,
-            headers={"Referer": self.domain + "/catalog"},
-            timeout=15,
-        )
-        if resp.status_code in (401, 403):
-            log.warning("Vinted zwrocil %s, ponawiam warm-up sesji", resp.status_code)
-            self._warmed_up = False
-            self._warm_up()
-            resp = self.session.get(
-                self.domain + "/api/v2/catalog/items",
-                params=params,
-                headers={"Referer": self.domain + "/catalog"},
-                timeout=15,
-            )
-        resp.raise_for_status()
-        return resp.json().get("items", [])
+        last_exc = None
+        for attempt in range(self.FETCH_RETRIES):
+            try:
+                resp = self.session.get(
+                    self.domain + "/api/v2/catalog/items",
+                    params=params,
+                    headers={"Referer": self.domain + "/catalog"},
+                    timeout=15,
+                )
+                if resp.status_code in (401, 403):
+                    log.warning("Vinted zwrocil %s, ponawiam warm-up sesji", resp.status_code)
+                    self._warmed_up = False
+                    self._warm_up()
+                    resp = self.session.get(
+                        self.domain + "/api/v2/catalog/items",
+                        params=params,
+                        headers={"Referer": self.domain + "/catalog"},
+                        timeout=15,
+                    )
+                resp.raise_for_status()
+                return resp.json().get("items", [])
+            except requests.RequestException as exc:
+                last_exc = exc
+                if attempt < self.FETCH_RETRIES - 1:
+                    delay = self.RETRY_BACKOFF_SECONDS[attempt]
+                    log.warning(
+                        "Blad zapytania do Vinted (proba %d/%d): %s - ponawiam za %ds",
+                        attempt + 1, self.FETCH_RETRIES, exc, delay,
+                    )
+                    time.sleep(delay)
+        raise last_exc
 
     def fetch_newest_listings(self, limit: int) -> list[dict]:
         self._warm_up()
