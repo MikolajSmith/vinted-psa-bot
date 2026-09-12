@@ -30,7 +30,7 @@ DISCORD_WEBHOOK_URL = _require("DISCORD_WEBHOOK_URL")
 # Domyslnie: od 2% drozej do 40% taniej (powyzej 40% taniej to zwykle bledne dopasowanie karty).
 MIN_DISCOUNT_PERCENT = float(os.environ.get("MIN_DISCOUNT_PERCENT", "-2"))
 MAX_DISCOUNT_PERCENT = float(os.environ.get("MAX_DISCOUNT_PERCENT", "40"))
-MIN_SALES_SAMPLE = int(os.environ.get("MIN_SALES_SAMPLE", "3"))
+MIN_SALES_SAMPLE = int(os.environ.get("MIN_SALES_SAMPLE", "1"))
 MAX_LISTINGS_PER_RUN = int(os.environ.get("MAX_LISTINGS_PER_RUN", "200"))
 # Ile ogloszen bez PSA w tytule sprawdzic dodatkowo przez pobranie opisu (dociazenie Vinted per przebieg).
 MAX_DESCRIPTION_FETCHES_PER_RUN = int(os.environ.get("MAX_DESCRIPTION_FETCHES_PER_RUN", "50"))

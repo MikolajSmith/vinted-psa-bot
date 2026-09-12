@@ -7,6 +7,10 @@ log = logging.getLogger("vinted_bot.notifier")
 
 def send_deal_alert(webhook_url: str, deal: dict):
     confidence_note = "" if deal["confident"] else "\n⚠️ **Niepewne dopasowanie karty — zweryfikuj ręcznie**"
+    sample_note = (
+        f"\n📉 **Cena oparta tylko na {deal['sample_count']} sprzedaży — potraktuj jako orientacyjną**"
+        if deal["sample_count"] <= 2 else ""
+    )
     description = (
         f"**{deal['title']}**\n"
         f"Dopasowana karta: **{deal.get('matched_card_name', '?')}** ({deal.get('matched_set_name', '?')})\n"
@@ -16,6 +20,7 @@ def send_deal_alert(webhook_url: str, deal: dict):
         f"metoda: {deal.get('pricing_method', '?')}): **{deal['reference_price_usd']:.2f} USD**\n"
         f"Rabat: **{deal['discount_percent']:.1f}%**"
         f"{confidence_note}"
+        f"{sample_note}"
     )
     payload = {
         "embeds": [

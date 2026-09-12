@@ -183,7 +183,9 @@ Wszystko w `.env`:
   powiadomienie (domyślnie -2 do 40 — czyli od 2% drożej do 40% taniej niż cena referencyjna;
   powyżej ~40% taniej to zwykle błędne dopasowanie karty/setu, nie prawdziwa okazja).
 - `MIN_SALES_SAMPLE` — minimalna liczba sprzedaży w danym gradingu, żeby cena referencyjna
-  była uznana za wiarygodną (domyślnie 3).
+  była uznana za wiarygodną (domyślnie 1 — celowo nisko, żeby nie omijać rzadkich kart z małym
+  wolumenem sprzedaży na eBay; oferty z ceną opartą tylko na 1-2 sprzedażach dostają w Discordzie
+  dodatkową etykietę 📉 "cena orientacyjna", żeby było widać że to mniej pewne niż zwykle).
 - `MAX_LISTINGS_PER_RUN` — ile najnowszych ofert z Vinted sprawdzać w jednym przebiegu
   (domyślnie 200, pobierane stronicowo po 96).
 - `MAX_DESCRIPTION_FETCHES_PER_RUN` — ile ofert bez gradingu w tytule dodatkowo sprawdzić przez
