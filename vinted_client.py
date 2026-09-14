@@ -1,12 +1,22 @@
+import html
 import json
 import logging
 import re
 import time
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, urlencode
 
 import requests
 
 LD_JSON_RE = re.compile(r'<script type="application/ld\+json">(.*?)</script>', re.DOTALL)
+
+# Vinted przestal wystawiac publiczne /api/v2/catalog/items (zwraca 404 "not_found" od
+# 2026-09-14 - najprawdopodobniej przez przebudowe frontendu na Next.js/RSC, nowa domena
+# marketplace-web-assets.vinted.com). Wyniki wyszukiwania sa teraz renderowane bezposrednio
+# w HTML strony /catalog, wiec scrapujemy je stamtad zamiast wolac API.
+CONTAINER_RE = re.compile(r'data-testid="product-item-id-(\d+)"')
+IMG_SRC_RE = re.compile(r'<img src="([^"]+)"')
+LINK_TITLE_RE = re.compile(r'href="(/items/[^"]+)"[^>]*title="([^"]+)"')
+TITLE_PRICE_RE = re.compile(r'^(.*?)(?:,\s*Marka:\s*[^,]+)?,\s*Stan:\s*[^,]+,\s*([\d.,]+)\s*zł,')
 
 log = logging.getLogger("vinted_bot.vinted")
 
@@ -27,7 +37,7 @@ class VintedClient:
         self.session.headers.update(
             {
                 "User-Agent": USER_AGENT,
-                "Accept": "application/json, text/plain, */*",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
                 "Accept-Language": "pl-PL,pl;q=0.9,en;q=0.8",
             }
         )
@@ -40,40 +50,36 @@ class VintedClient:
         resp.raise_for_status()
         self._warmed_up = True
 
-    PER_PAGE = 96
-    # Vinted potrafi miec przejsciowe awarie (5xx) trwajace nawet ponad godzine (obserwowane
-    # w produkcji) - retry z backoffem zamiast wywalania calego przebiegu na pierwszym blednym
-    # zapytaniu.
+    # Vinted potrafi miec przejsciowe awarie (5xx/polaczenie) - retry z backoffem zamiast
+    # wywalania calego przebiegu na pierwszym blednym zapytaniu. Bledy 404 NIE sa tu ponawiane
+    # (patrz _fetch_search_html) - to trwaly stan (np. zmiana struktury strony), nie przejsciowy.
     FETCH_RETRIES = 3
     RETRY_BACKOFF_SECONDS = (3, 8, 20)
 
-    def _fetch_page(self, page: int, per_page: int) -> list[dict]:
+    def _fetch_search_html(self, page: int) -> str:
         params = dict(self.query_params)
-        params["per_page"] = str(per_page)
-        params["page"] = str(page)
+        if page > 1:
+            params["page"] = str(page)
+        url = self.domain + "/catalog?" + urlencode(params)
 
         last_exc = None
         for attempt in range(self.FETCH_RETRIES):
             try:
-                resp = self.session.get(
-                    self.domain + "/api/v2/catalog/items",
-                    params=params,
-                    headers={"Referer": self.domain + "/catalog"},
-                    timeout=15,
-                )
+                resp = self.session.get(url, timeout=20)
                 if resp.status_code in (401, 403):
                     log.warning("Vinted zwrocil %s, ponawiam warm-up sesji", resp.status_code)
                     self._warmed_up = False
                     self._warm_up()
-                    resp = self.session.get(
-                        self.domain + "/api/v2/catalog/items",
-                        params=params,
-                        headers={"Referer": self.domain + "/catalog"},
-                        timeout=15,
-                    )
+                    resp = self.session.get(url, timeout=20)
                 resp.raise_for_status()
-                return resp.json().get("items", [])
+                return resp.text
             except requests.RequestException as exc:
+                is_404 = isinstance(exc, requests.HTTPError) and exc.response is not None \
+                    and exc.response.status_code == 404
+                if is_404:
+                    # trwaly stan (np. zmiana struktury strony przez Vinted), nie przejsciowy -
+                    # ponawianie nic tu nie da, tylko marnuje czas.
+                    raise
                 last_exc = exc
                 if attempt < self.FETCH_RETRIES - 1:
                     delay = self.RETRY_BACKOFF_SECONDS[attempt]
@@ -84,35 +90,53 @@ class VintedClient:
                     time.sleep(delay)
         raise last_exc
 
-    def fetch_newest_listings(self, limit: int) -> list[dict]:
-        self._warm_up()
-
-        items = []
-        page = 1
-        while len(items) < limit:
-            per_page = min(self.PER_PAGE, limit - len(items))
-            page_items = self._fetch_page(page, per_page)
-            if not page_items:
-                break
-            items.extend(page_items)
-            page += 1
-            if len(items) < limit:
-                time.sleep(0.5)
-
+    def _parse_search_html(self, page_html: str) -> list[dict]:
+        starts = [(m.group(1), m.start()) for m in CONTAINER_RE.finditer(page_html)]
         listings = []
-        for item in items[:limit]:
-            price = item.get("price") or item.get("total_item_price") or {}
+        for i, (item_id, pos) in enumerate(starts):
+            end = starts[i + 1][1] if i + 1 < len(starts) else pos + 3000
+            chunk = page_html[pos:end]
+
+            link_match = LINK_TITLE_RE.search(chunk)
+            if not link_match:
+                continue
+            href, title_attr = link_match.groups()
+            title_attr = html.unescape(title_attr)
+
+            price_match = TITLE_PRICE_RE.match(title_attr)
+            title = price_match.group(1).strip() if price_match else title_attr
+            price_amount = float(price_match.group(2).replace(",", ".")) if price_match else 0.0
+
+            img_match = IMG_SRC_RE.search(chunk)
+
             listings.append(
                 {
-                    "id": str(item.get("id")),
-                    "title": item.get("title") or "",
-                    "price_amount": float(price.get("amount", 0) or 0),
-                    "price_currency": price.get("currency_code", "PLN"),
-                    "url": item.get("url"),
-                    "photo_url": (item.get("photo") or {}).get("url"),
+                    "id": item_id,
+                    "title": title,
+                    "price_amount": price_amount,
+                    "price_currency": "PLN",
+                    "url": self.domain + href.split("?")[0],
+                    "photo_url": img_match.group(1) if img_match else None,
                 }
             )
         return listings
+
+    def fetch_newest_listings(self, limit: int) -> list[dict]:
+        self._warm_up()
+
+        listings = []
+        page = 1
+        while len(listings) < limit:
+            page_html = self._fetch_search_html(page)
+            page_listings = self._parse_search_html(page_html)
+            if not page_listings:
+                break
+            listings.extend(page_listings)
+            page += 1
+            if len(listings) < limit:
+                time.sleep(0.5)
+
+        return listings[:limit]
 
     DESCRIPTION_FETCH_DELAY = 0.6
 
