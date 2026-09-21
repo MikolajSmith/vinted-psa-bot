@@ -28,6 +28,13 @@ HEDGE_WORDS = {
 }
 HEDGE_WINDOW = 40
 
+# Sprzedajacy czesto doklejaja do opisu ogromna liste hasztago-podobnych slow kluczowych
+# (nazwy setow, "Graded, PSA 10, BGS, CGC, ...") wylacznie po to, zeby ogloszenie wyskakiwalo
+# w jak najwiecej wyszukiwan. To NIE jest deklaracja gradingu, tylko spam SEO - odrozniamy to
+# po gestosci przecinkow wokol dopasowania (prawdziwe zdanie o karcie ma ich duzo mniej).
+SPAM_LIST_WINDOW = 75
+SPAM_LIST_MIN_COMMAS = 8
+
 NOISE_WORDS = {
     "psa", "bgs", "cgc", "sgc", "beckett", "grading", "graded", "gradingu",
     "slab", "card", "cards", "karta", "karty", "pokemon", "pokemony", "sealed",
@@ -54,10 +61,15 @@ def _is_hedged(text: str, match: re.Match) -> bool:
     return any(phrase in window for phrase in HEDGE_WORDS)
 
 
+def _is_keyword_spam(text: str, match: re.Match) -> bool:
+    window = text[max(0, match.start() - SPAM_LIST_WINDOW): match.end() + SPAM_LIST_WINDOW]
+    return window.count(",") >= SPAM_LIST_MIN_COMMAS
+
+
 def parse_listing(title: str) -> dict | None:
     grade_match = None
     for candidate in GRADE_RE.finditer(title):
-        if not _is_hedged(title, candidate):
+        if not _is_hedged(title, candidate) and not _is_keyword_spam(title, candidate):
             grade_match = candidate
             break
     if not grade_match:
