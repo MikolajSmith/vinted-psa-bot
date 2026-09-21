@@ -14,8 +14,10 @@ def _require(name: str) -> str:
 
 
 _DEFAULT_SEARCH_URLS = (
-    "https://www.vinted.pl/catalog?search_text=pokemon%20psa&order=newest_first,"
-    "https://www.vinted.pl/catalog?search_text=pokemon%20bgs&order=newest_first"
+    "https://www.vinted.pl/catalog?search_text=pokemon%20jungle&order=newest_first,"
+    "https://www.vinted.pl/catalog?search_text=pokemon%201st%20ed&order=newest_first,"
+    "https://www.vinted.pl/catalog?search_text=pokemon%20neo&order=newest_first,"
+    "https://www.vinted.pl/catalog?search_text=pokemon%20fossil&order=newest_first"
 )
 # Lista linkow wyszukiwania Vinted rozdzielonych przecinkiem - bot sprawdza kazdy z osobna,
 # ale ogloszenia sa deduplikowane globalnie (jedno id = sprawdzone raz, niezaleznie z ktorego wyszukiwania).

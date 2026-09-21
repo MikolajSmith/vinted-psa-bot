@@ -17,6 +17,23 @@ logging.basicConfig(
 )
 log = logging.getLogger("vinted_bot")
 
+# Etykieta serii do powiadomienia (np. "Vintage Holo Jungle"), na podstawie tego ktore
+# wyszukiwanie Vinted znalazlo dane ogloszenie. "1st ed" celowo nie ma etykiety serii -
+# to oznaczenie edycji, nie nazwa setu.
+SERIES_LABELS = {
+    "jungle": "Jungle",
+    "fossil": "Fossil",
+    "neo": "Neo",
+}
+
+
+def _series_label_from_url(search_url: str) -> str | None:
+    lowered = search_url.lower()
+    for keyword, label in SERIES_LABELS.items():
+        if keyword in lowered:
+            return label
+    return None
+
 
 def _log_activity(listing, decision, parsed=None, reference=None, discount_percent=None):
     activity_log.log_row(
@@ -38,7 +55,9 @@ def _log_activity(listing, decision, parsed=None, reference=None, discount_perce
     )
 
 
-def _process_listing(listing, vinted, price_client, counters):
+def _process_listing(listing, vinted, price_client, counters, series_label):
+    # Bot informuje o KAZDYM ogloszeniu z wykrytym gradingiem (PSA/BGS/CGC/SGC) - cena
+    # referencyjna to tylko dodatkowa informacja w powiadomieniu, nie warunek wysylki.
     parsed = matcher.parse_listing(listing["title"])
     if not parsed:
         if counters["description_fetches_left"] <= 0:
@@ -53,71 +72,59 @@ def _process_listing(listing, vinted, price_client, counters):
             _log_activity(listing, "brak_gradingu_w_tytule_ani_opisie")
             return
 
-    if price_client.quota_exhausted:
-        # nie oznaczamy jako "seen" - sprobujemy ponownie w kolejnym przebiegu, po resecie limitu
-        _log_activity(listing, "limit_api_wyczerpany_retry_pozniej", parsed=parsed)
-        return
-
-    reference = price_client.get_reference_price(
-        parsed["search_query"], parsed["grade_key"], parsed["search_tokens"], parsed["narrow_query"]
-    )
-    if price_client.quota_exhausted:
-        _log_activity(listing, "limit_api_wyczerpany_retry_pozniej", parsed=parsed)
-        return
     counters["new_ids"].append(listing["id"])
 
-    if not reference:
-        _log_activity(listing, "brak_ceny_referencyjnej", parsed=parsed)
-        return
-    if reference["sample_count"] < config.MIN_SALES_SAMPLE:
-        _log_activity(listing, "za_mala_probka_sprzedazy", parsed=parsed, reference=reference)
-        return
-
-    try:
-        rate = fx.get_rate(listing["price_currency"], "USD")
-    except Exception as exc:  # noqa: BLE001 - kurs walut nie moze wywalic calego runu
-        log.warning("Nie udalo sie pobrac kursu walut: %s", exc)
-        _log_activity(listing, "blad_kursu_walut", parsed=parsed, reference=reference)
-        return
-    listing_price_usd = listing["price_amount"] * rate
-
-    reference_usd = reference["median_price_usd"]
-    if reference_usd <= 0:
-        _log_activity(listing, "nieprawidlowa_cena_referencyjna", parsed=parsed, reference=reference)
-        return
-    discount_percent = (reference_usd - listing_price_usd) / reference_usd * 100
-
-    if not (config.MIN_DISCOUNT_PERCENT <= discount_percent <= config.MAX_DISCOUNT_PERCENT):
-        _log_activity(
-            listing, "poza_zakresem_rabatu", parsed=parsed, reference=reference,
-            discount_percent=discount_percent,
+    reference = None
+    if not price_client.quota_exhausted:
+        reference = price_client.get_reference_price(
+            parsed["search_query"], parsed["grade_key"], parsed["search_tokens"], parsed["narrow_query"]
         )
-        return
 
-    confident = reference["confident"]
+    listing_price_usd = None
+    discount_percent = None
+    if reference and reference["median_price_usd"] > 0:
+        try:
+            rate = fx.get_rate(listing["price_currency"], "USD")
+            listing_price_usd = listing["price_amount"] * rate
+            discount_percent = (
+                (reference["median_price_usd"] - listing_price_usd) / reference["median_price_usd"] * 100
+            )
+        except Exception as exc:  # noqa: BLE001 - brak kursu walut nie blokuje powiadomienia
+            log.warning("Nie udalo sie pobrac kursu walut: %s", exc)
+
+    vintage_tag = None
+    if parsed["is_holo"]:
+        vintage_tag = f"Vintage Holo {series_label}" if series_label else "Vintage Holo"
+
     deal = {
         "listing_id": listing["id"],
         "title": listing["title"],
+        "vintage_tag": vintage_tag,
         "url": listing["url"],
         "photo_url": listing["photo_url"],
         "listing_price": listing["price_amount"],
         "listing_currency": listing["price_currency"],
         "listing_price_usd": listing_price_usd,
         "grade_raw": f"{parsed['company']} {parsed['grade_raw']}",
-        "reference_price_usd": reference_usd,
-        "pricing_method": reference["pricing_method"],
-        "matched_card_name": reference["card_name"],
-        "matched_set_name": reference["set_name"],
-        "sample_count": reference["sample_count"],
+        "reference_price_usd": reference["median_price_usd"] if reference else None,
+        "pricing_method": reference["pricing_method"] if reference else None,
+        "matched_card_name": reference["card_name"] if reference else None,
+        "matched_set_name": reference["set_name"] if reference else None,
+        "sample_count": reference["sample_count"] if reference else None,
         "discount_percent": discount_percent,
-        "confident": confident,
+        "confident": reference["confident"] if reference else None,
+        "is_good_deal": (
+            reference is not None
+            and discount_percent is not None
+            and config.MIN_DISCOUNT_PERCENT <= discount_percent <= config.MAX_DISCOUNT_PERCENT
+        ),
     }
     try:
         send_deal_alert(config.DISCORD_WEBHOOK_URL, deal)
         counters["deals_found"] += 1
         _log_activity(
-            listing, "wyslano_na_discord", parsed=parsed, reference=reference,
-            discount_percent=discount_percent,
+            listing, "wyslano_na_discord" if reference else "wyslano_na_discord_bez_ceny",
+            parsed=parsed, reference=reference, discount_percent=discount_percent,
         )
     except Exception as exc:  # noqa: BLE001 - nie przerywamy runu na jednym bledzie webhooka
         log.error("Nie udalo sie wyslac powiadomienia Discord: %s", exc)
@@ -138,19 +145,18 @@ def run():
         vinted = VintedClient(search_url)
         listings = vinted.fetch_newest_listings(config.MAX_LISTINGS_PER_RUN)
         log.info("Pobrano %d ofert z Vinted (%s)", len(listings), search_url)
+        series_label = _series_label_from_url(search_url)
 
         for listing in listings:
             if listing["id"] in seen_ids_set:
                 # feed jest posortowany od najnowszych - dalsze pozycje sa starsze i tez juz sprawdzone
                 log.info("Trafiono na juz sprawdzona oferte %s, przerywam to wyszukiwanie", listing["id"])
                 break
-            ids_before = len(counters["new_ids"])
-            _process_listing(listing, vinted, price_client, counters)
-            if len(counters["new_ids"]) > ids_before:
-                # dopiero teraz naprawde "przetworzone" - blokuje ponowne wysylanie w drugim
-                # wyszukiwaniu w tym samym przebiegu; oferty pominiete przez limit API NIE sa
-                # dodawane, zeby kolejne wyszukiwanie mialo szanse je jeszcze sprawdzic
-                seen_ids_set.add(listing["id"])
+            _process_listing(listing, vinted, price_client, counters, series_label)
+            # kazda przetworzona oferta jest od razu oznaczana jako "seen" (blokuje ponowne
+            # wysylanie w drugim wyszukiwaniu w tym samym przebiegu) - cena jest tylko
+            # dodatkiem, wiec nie ma juz powodu odkladac ofert "na potem" z powodu limitu API
+            seen_ids_set.add(listing["id"])
 
     seen_ids.extend(counters["new_ids"])
     state.save_seen_ids(config.STATE_FILE, seen_ids)

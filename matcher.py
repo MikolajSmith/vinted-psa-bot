@@ -2,6 +2,7 @@ import re
 
 GRADE_RE = re.compile(r"\b(PSA|BGS|CGC|SGC)\s*-?\s*(10|[1-9](?:[.,]5)?)\b", re.IGNORECASE)
 CARD_NUMBER_RE = re.compile(r"\b(\d{1,3})\s*/\s*(\d{1,3})\b")
+HOLO_RE = re.compile(r"\bholo\w*\b", re.IGNORECASE)
 
 # Frazy sugerujace, ze "PSA N"/"BGS N" to subiektywna ocena sprzedajacego dla NIEGRADOWANEJ karty
 # (np. "condition is estimated as PSA 7", "na oko psa 8/9"), a nie prawdziwy certyfikat.
@@ -105,4 +106,5 @@ def parse_listing(title: str) -> dict | None:
         "search_query": search_query,
         "narrow_query": narrow_query,
         "search_tokens": search_tokens,
+        "is_holo": bool(HOLO_RE.search(title)),
     }
