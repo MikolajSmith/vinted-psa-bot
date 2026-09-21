@@ -17,7 +17,11 @@ _DEFAULT_SEARCH_URLS = (
     "https://www.vinted.pl/catalog?search_text=pokemon%20jungle&order=newest_first,"
     "https://www.vinted.pl/catalog?search_text=pokemon%201st%20ed&order=newest_first,"
     "https://www.vinted.pl/catalog?search_text=pokemon%20neo&order=newest_first,"
-    "https://www.vinted.pl/catalog?search_text=pokemon%20fossil&order=newest_first"
+    "https://www.vinted.pl/catalog?search_text=pokemon%20fossil&order=newest_first,"
+    "https://www.vinted.pl/catalog?search_text=pokemon%20skyridge&order=newest_first,"
+    "https://www.vinted.pl/catalog?search_text=pokemon%20aquapolis&order=newest_first,"
+    "https://www.vinted.pl/catalog?search_text=pokemon%20gold%20star&order=newest_first,"
+    "https://www.vinted.pl/catalog?search_text=pokemon%20banned&order=newest_first"
 )
 # Lista linkow wyszukiwania Vinted rozdzielonych przecinkiem - bot sprawdza kazdy z osobna,
 # ale ogloszenia sa deduplikowane globalnie (jedno id = sprawdzone raz, niezaleznie z ktorego wyszukiwania).

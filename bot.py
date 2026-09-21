@@ -18,12 +18,14 @@ logging.basicConfig(
 log = logging.getLogger("vinted_bot")
 
 # Etykieta serii do powiadomienia (np. "Vintage Holo Jungle"), na podstawie tego ktore
-# wyszukiwanie Vinted znalazlo dane ogloszenie. "1st ed" celowo nie ma etykiety serii -
-# to oznaczenie edycji, nie nazwa setu.
+# wyszukiwanie Vinted znalazlo dane ogloszenie. "1st ed", "gold star" i "banned" celowo nie
+# maja etykiety serii - to nie nazwy setow, tylko oznaczenie edycji/rzadkosci.
 SERIES_LABELS = {
     "jungle": "Jungle",
     "fossil": "Fossil",
     "neo": "Neo",
+    "skyridge": "Skyridge",
+    "aquapolis": "Aquapolis",
 }
 
 
