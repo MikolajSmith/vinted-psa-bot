@@ -40,4 +40,13 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add state.json activity_log.csv
           git diff --cached --quiet || git commit -m "Aktualizacja stanu bota [skip ci]"
-          git push
+          # concurrency group powinien serializowac przebiegi, ale gdyby jednak dwa przebiegi
+          # nachodzily na siebie (np. rowny czas natywnego schedule i cron-job.org), push moze
+          # zostac odrzucony jako nie-fast-forward - pull --rebase i ponow, zamiast wywalac caly przebieg.
+          for attempt in 1 2 3; do
+            if git push; then
+              break
+            fi
+            echo "Push nieudany (proba $attempt/3), pobieram najnowszy stan i ponawiam..."
+            git pull --rebase origin main
+          done
