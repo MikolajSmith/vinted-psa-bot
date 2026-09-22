@@ -3,6 +3,15 @@ import re
 GRADE_RE = re.compile(r"\b(PSA|BGS|CGC|SGC)\s*-?\s*(10|[1-9](?:[.,]5)?)\b", re.IGNORECASE)
 CARD_NUMBER_RE = re.compile(r"\b(\d{1,3})\s*/\s*(\d{1,3})\b")
 HOLO_RE = re.compile(r"\bholo\w*\b", re.IGNORECASE)
+# Sprzedajacy czasem doklejaja na koncu opisu hasztag + gesta liste slow kluczowych do SEO
+# (np. "#pokemon" nastepnie "Crown Zenith, TCG Card, ..., Graded, PSA 10, BGS, CGC, ...").
+# UWAGA: samo "#" NIE wystarcza jako sygnal - wiele prawdziwych tytulow uzywa "#" dla numeru
+# karty (np. "Mega Kangaskhan ex #89 ... PSA 10", "Flareon Japanese #55 psa 10"), a grading
+# czesto wystepuje PO takim numerze. Obcinamy wiec tylko przy hasztagu, po ktorym faktycznie
+# zaczyna sie gesta lista przecinkowa (prawdziwy start "worka tagow"), nie przy kazdym "#N".
+HASHTAG_RE = re.compile(r"#\w+")
+TAG_BLOCK_WINDOW = 150
+TAG_BLOCK_MIN_COMMAS = 8
 
 # Frazy sugerujace, ze "PSA N"/"BGS N" to subiektywna ocena sprzedajacego dla NIEGRADOWANEJ karty
 # (np. "condition is estimated as PSA 7", "na oko psa 8/9"), a nie prawdziwy certyfikat.
@@ -66,7 +75,21 @@ def _is_keyword_spam(text: str, match: re.Match) -> bool:
     return window.count(",") >= SPAM_LIST_MIN_COMMAS
 
 
-def parse_listing(title: str) -> dict | None:
+def _find_tag_block_start(text: str) -> int | None:
+    """Zwraca pozycje poczatku 'worka tagow' (hasztag + zaraz po nim gesta lista przecinkowa),
+    albo None jesli w tekscie nie ma takiego bloku. Zwykle "#numer" karty (bez listy po nim)
+    NIE jest traktowany jako worek tagow."""
+    for hashtag in HASHTAG_RE.finditer(text):
+        after = text[hashtag.end(): hashtag.end() + TAG_BLOCK_WINDOW]
+        if after.count(",") >= TAG_BLOCK_MIN_COMMAS:
+            return hashtag.start()
+    return None
+
+
+def parse_listing(raw_title: str) -> dict | None:
+    tag_block_start = _find_tag_block_start(raw_title)
+    title = raw_title[:tag_block_start] if tag_block_start is not None else raw_title
+
     grade_match = None
     for candidate in GRADE_RE.finditer(title):
         if not _is_hedged(title, candidate) and not _is_keyword_spam(title, candidate):
