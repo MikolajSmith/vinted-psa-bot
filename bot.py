@@ -60,6 +60,7 @@ def _log_activity(listing, decision, parsed=None, reference=None, discount_perce
 def _process_listing(listing, vinted, price_client, counters, series_label):
     # Bot informuje o KAZDYM ogloszeniu z wykrytym gradingiem (PSA/BGS/CGC/SGC) - cena
     # referencyjna to tylko dodatkowa informacja w powiadomieniu, nie warunek wysylki.
+    description = None
     parsed = matcher.parse_listing(listing["title"])
     if not parsed:
         if counters["description_fetches_left"] <= 0:
@@ -72,6 +73,20 @@ def _process_listing(listing, vinted, price_client, counters, series_label):
         if not parsed:
             counters["new_ids"].append(listing["id"])
             _log_activity(listing, "brak_gradingu_w_tytule_ani_opisie")
+            return
+
+    # Vinted zwraca wyniki na podstawie luznego dopasowania - wyszukiwanie "fossil" potrafi
+    # zwrocic wspolczesna karte, ktora w ogole nie wspomina o Fossil. Wymagamy wiec, zeby
+    # tytul/opis faktycznie potwierdzal docelowa serie/kategorie, nie tylko to ktore
+    # wyszukiwanie ja znalazlo.
+    if not parsed["mentions_target_set"]:
+        if description is None and counters["description_fetches_left"] > 0:
+            counters["description_fetches_left"] -= 1
+            description = vinted.fetch_description(listing["url"])
+            parsed = matcher.parse_listing(f"{listing['title']} {description}")
+        if not parsed or not parsed["mentions_target_set"]:
+            counters["new_ids"].append(listing["id"])
+            _log_activity(listing, "brak_potwierdzenia_serii_vintage", parsed=parsed)
             return
 
     counters["new_ids"].append(listing["id"])

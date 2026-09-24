@@ -11,7 +11,23 @@ HOLO_RE = re.compile(r"\bholo\w*\b", re.IGNORECASE)
 # zaczyna sie gesta lista przecinkowa (prawdziwy start "worka tagow"), nie przy kazdym "#N".
 HASHTAG_RE = re.compile(r"#\w+")
 TAG_BLOCK_WINDOW = 150
-TAG_BLOCK_MIN_COMMAS = 8
+TAG_BLOCK_MIN_SEPARATORS = 8
+# Wariant spamu bez przecinkow wcale: dziesiatki hasztagow pod rzad rozdzielonych spacjami
+# ("#pokemon #psa #cgc #graded ..."), i/lub sekcje rozdzielone kropkami zamiast przecinkow
+# ("Sleeve Graded. PSA 10. BGS CGC. TCG Live, ..."), zeby ominac liczenie samych przecinkow.
+# Jawny marker "Tags:"/"tagi:" tez sam w sobie jest jednoznacznym sygnalem konca opisu.
+HASHTAG_CLUSTER_RE = re.compile(r"(?:#\w+\s*){3,}")
+TAGS_MARKER_RE = re.compile(r"\b(tags|hashtags|tagi)\s*:", re.IGNORECASE)
+
+# Vinted zwraca wyniki na podstawie luznego/fuzzy dopasowania (obserwowane: wyszukiwanie
+# "fossil" potrafi zwrocic karte ze wspolczesnego setu, ktora w ogole nie wspomina o Fossil).
+# Zeby nie wysylac takich przypadkowych trafien, wymagamy zeby tytul/opis (po odcieciu worka
+# tagow) FAKTYCZNIE wspominal jedna z docelowych vintage serii/kategorii.
+TARGET_SET_RE = re.compile(
+    r"\b(jungle|fossil|neo\s*(genesis|discovery|destiny|revelation)?|"
+    r"1st\s*ed(ition)?|pierwsz[ae]\s*edycj[ae]|aquapolis|skyridge|gold\s*star|banned)\b",
+    re.IGNORECASE,
+)
 
 # Frazy sugerujace, ze "PSA N"/"BGS N" to subiektywna ocena sprzedajacego dla NIEGRADOWANEJ karty
 # (np. "condition is estimated as PSA 7", "na oko psa 8/9"), a nie prawdziwy certyfikat.
@@ -40,9 +56,12 @@ HEDGE_WINDOW = 40
 # Sprzedajacy czesto doklejaja do opisu ogromna liste hasztago-podobnych slow kluczowych
 # (nazwy setow, "Graded, PSA 10, BGS, CGC, ...") wylacznie po to, zeby ogloszenie wyskakiwalo
 # w jak najwiecej wyszukiwan. To NIE jest deklaracja gradingu, tylko spam SEO - odrozniamy to
-# po gestosci przecinkow wokol dopasowania (prawdziwe zdanie o karcie ma ich duzo mniej).
+# po gestosci separatorow (przecinki LUB kropki - niektorzy sprzedajacy mieszaja oba w tej
+# samej liscie, np. "Sleeve Graded. PSA 10. BGS CGC. TCG Live, Game Freak, ...", zeby ominac
+# liczenie samych przecinkow) wokol dopasowania (prawdziwe zdanie o karcie ma ich duzo mniej).
 SPAM_LIST_WINDOW = 75
-SPAM_LIST_MIN_COMMAS = 8
+SPAM_LIST_MIN_SEPARATORS = 8
+_SEPARATOR_RE = re.compile(r"[,.]")
 
 NOISE_WORDS = {
     "psa", "bgs", "cgc", "sgc", "beckett", "grading", "graded", "gradingu",
@@ -72,18 +91,34 @@ def _is_hedged(text: str, match: re.Match) -> bool:
 
 def _is_keyword_spam(text: str, match: re.Match) -> bool:
     window = text[max(0, match.start() - SPAM_LIST_WINDOW): match.end() + SPAM_LIST_WINDOW]
-    return window.count(",") >= SPAM_LIST_MIN_COMMAS
+    return len(_SEPARATOR_RE.findall(window)) >= SPAM_LIST_MIN_SEPARATORS
 
 
 def _find_tag_block_start(text: str) -> int | None:
-    """Zwraca pozycje poczatku 'worka tagow' (hasztag + zaraz po nim gesta lista przecinkowa),
-    albo None jesli w tekscie nie ma takiego bloku. Zwykle "#numer" karty (bez listy po nim)
-    NIE jest traktowany jako worek tagow."""
+    """Zwraca pozycje poczatku 'worka tagow' (hashtagi/lista slow kluczowych sprzedajacego do
+    SEO), albo None jesli w tekscie nie ma takiego bloku. Zwykle pojedynczy "#numer" karty
+    (bez nic wiecej podejrzanego po nim) NIE jest traktowany jako worek tagow. Sprawdzamy
+    kilka niezaleznych sygnalow i bierzemy ten, ktory wystapil najwczesniej w tekscie:
+    - jawny marker "Tags:"/"tagi:",
+    - klaster 3+ hasztagow pod rzad (typowe rozdzielenie spacjami, bez przecinkow),
+    - hasztag, po ktorym w ciagu 150 znakow jest gesta lista separatorow (przecinki/kropki)."""
+    candidates = []
+
+    tags_marker = TAGS_MARKER_RE.search(text)
+    if tags_marker:
+        candidates.append(tags_marker.start())
+
+    cluster_match = HASHTAG_CLUSTER_RE.search(text)
+    if cluster_match:
+        candidates.append(cluster_match.start())
+
     for hashtag in HASHTAG_RE.finditer(text):
         after = text[hashtag.end(): hashtag.end() + TAG_BLOCK_WINDOW]
-        if after.count(",") >= TAG_BLOCK_MIN_COMMAS:
-            return hashtag.start()
-    return None
+        if len(_SEPARATOR_RE.findall(after)) >= TAG_BLOCK_MIN_SEPARATORS:
+            candidates.append(hashtag.start())
+            break
+
+    return min(candidates) if candidates else None
 
 
 def parse_listing(raw_title: str) -> dict | None:
@@ -142,4 +177,5 @@ def parse_listing(raw_title: str) -> dict | None:
         "narrow_query": narrow_query,
         "search_tokens": search_tokens,
         "is_holo": bool(HOLO_RE.search(title)),
+        "mentions_target_set": bool(TARGET_SET_RE.search(title)),
     }
